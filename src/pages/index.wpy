@@ -1,0 +1,209 @@
+<style type="less">
+.oneBus {
+    padding: 18px 2%;
+    border-bottom: 1px solid #efefef; /* no */
+    font-size: 28px;
+}
+.weui-search-bar {
+    background: #f8f8f8!important;
+    border:none!important;
+}
+.bus-1 {
+    display: flex;
+    flex-direction: row;
+    justify-content: space-between;
+    align-items: flex-end;
+    padding: 10px 0;
+}
+.bus-route text {
+    font-size: 34px;
+}
+.nearest-station {
+    font-size: 30px;
+    color: orangered;
+}
+.search-bus {
+    display: flex;
+    flex-direction: row;
+    justify-content: space-between;
+    align-items: center;
+}
+.search-bus view {
+    flex-grow: 1;
+    padding: 0 2%;
+}
+.search-bus input {
+    border-bottom: 1px solid #e0e0e0; /* no */
+    padding: 0 2%;
+}
+.no-result {
+    color: #999;
+    text-align: center;
+    padding: 15px 0;
+    font-size: 24px;
+}
+.bus-item {
+    padding: 20px 2%;
+    border-bottom: 1px solid #e0e0e0; /* no */
+    font-size: 24px;
+}
+.arriving-info {
+    display: flex;
+    flex-direction: row;
+    justify-content: space-between;
+    align-items: center;
+    padding: 15px 0;
+    font-size: 28px;
+}
+.smaller {
+    font-size: 24px;
+    color: #a0a0a0;
+}
+.smaller text {
+    font-weight: bold;
+}
+.time-info {
+    font-size: 22px;
+    color: #a0a0a0;
+}
+</style>
+<template>
+    <view class="page">
+        <view class="search-bus">
+            <view class="weui-cell__bd">
+                <input @input="inputVal" value="{{ searchField }}" class="weui-input" placeholder="输入线路或站点查询" />
+            </view>
+        </view>
+        <view class="page__bd page__bd_spacing">
+            <view hidden="{{ searchBus === null || searchField === '' }}" class="search-list">
+                <view class="bus-item" wx:for="{{ searchBus }}" wx:for-item="bus" wx:key="LINEORSTATIONNAME" @tap="findBus('{{ bus.LINEORSTATIONNAME }}', '{{ bus.FLAG }}')">
+                    <text>{{ bus.LINEORSTATIONNAME }}</text>
+                </view>
+            </view>
+            <view hidden="{{ !searching }}" class="no-result">正在查询...</view>
+            <view hidden="{{ searchField === '' || searchBus.length > 0 || searching }}" class="no-result">没有找到此路线～</view>
+            <view class="bus-list">
+                <repeat for="{{busList}}" key="k" index="i" item="item">
+                    <view class="oneBus" @tap="goDetail" data-linename="{{item.linename}}" data-flag="{{item.linetype}}" data-site="{{item.stationname}}">
+                        <view class="bus-1">
+                            <view class="bus-route"><text>{{item.linename}}</text>   {{item.start_statione_name}} → {{item.end_statione_name}}</view>
+                            <view class="nearest-station">{{item.stationname}}</view>
+                        </view>
+                        <view class="arriving-info" wx:if="{{item.differ_statione != '暂无车辆'}}">
+                            <text>距本站还有{{item.differ_statione}}站</text>
+                            <text class="smaller" wx:if="{{item.bus_in_stationname != '暂无公交到站信息'}}">即将到站 <text>{{item.bus_in_stationname}}</text></text>
+                            <text wx:else></text>
+                        </view>
+                        <view wx:else>暂无车辆</view>
+                        <view class="time-info">{{item.sbcsj}} → {{item.mbcsj}}</view>
+                    </view>
+                </repeat>
+            </view>
+        </view>
+    </view>
+</template>
+
+<script>
+import wepy from 'wepy';
+
+export default class Index extends wepy.page {
+    methods = {
+        findBus(name, flag) {
+            if (flag === 1) {
+                wepy.navigateTo({ url: 'detail?linename=' + name + '&flag=0' });
+            }
+        },
+        tapNearby() {
+            this.queryNearby();
+        },
+        goDetail(e) {
+            var flag = e.currentTarget.dataset.flag;
+            var linename = e.currentTarget.dataset.linename;
+            var site = e.currentTarget.dataset.site;
+            wepy.navigateTo({ url: 'detail?linename=' + linename + '&flag=' + flag + '&site=' + site });
+        },
+        inputVal(e) {
+            this.searchField = e.detail.value;
+            if (e.detail.value !== '') {
+                clearTimeout(this.timer);
+                this.timer = null;
+                this.searching = true;
+                this.timer = setTimeout(() => {
+                    this.likeQuery(e.detail.value);
+                }, 500);
+            } else {
+                this.searching = false;
+                clearTimeout(this.timer);
+                this.timer = null;
+                this.searchBus = null;
+            }
+        },
+    };
+    computed = {
+
+    };
+    data = {
+        searchField: '',
+        busList: [],
+        timer: null,
+        searchBus: null,
+        searching: false,
+    }
+    async likeQuery(site) {
+        var query = await wepy.request({
+            url: 'https://ktdvnipy.qcloud.la/bus/likeQuery',
+            data: {
+                site: site
+            },
+            method: 'POST',
+            header: {
+                'content-type': 'application/x-www-form-urlencoded'
+            },
+        });
+        this.searchBus = query.data.data.list;
+        this.searching = false;
+        this.$apply();
+    }
+    async queryNearby() {
+        var result = await wepy.getLocation({
+            type: 'wgs84'
+        });
+        var lat = result.latitude;
+        var lng = result.longitude;
+        var query = await wepy.request({
+            url: 'https://ktdvnipy.qcloud.la/bus/nearby',
+            data: {
+                lat: lat,
+                lng: lng
+            },
+            method: 'POST',
+            header: {
+                'content-type': 'application/x-www-form-urlencoded'
+            },
+        });
+        console.log(result);
+        console.log(query);
+        if (query.data.data && query.data.data.list) {
+            this.busList = query.data.data.list;
+        }
+        this.$apply();
+    }
+    async onLoad() {
+        wepy.showLoading({
+            title: '请稍等',
+            mask: true,
+        });
+        await this.queryNearby();
+        wepy.hideLoading();
+    }
+    async onPullDownRefresh() {
+        // wepy.showLoading({
+        //   title: '正在加载数据',
+        //   mask: true,
+        // });
+        await this.queryNearby();
+        // wepy.hideLoading();
+        wepy.stopPullDownRefresh();
+    }
+}
+</script>

@@ -1,0 +1,220 @@
+<style type="less">
+.nearby-site {
+    color: orange;
+}
+page {
+    height: 100%;
+    overflow-y: hidden;
+}
+.page {
+    height: 100%;
+}
+#topMap {
+    width: 100%;
+    height: 80%;
+}
+.route-data {
+    padding: 20px 1%;
+    font-size: 28px;
+}
+.switcher {
+    position: fixed;
+    bottom: 0;
+    border-radius: 0;
+    left: 0;
+    right: 0;
+}
+</style>
+<template>
+    <view class="page">
+        <map @markertap="markerTap" id="topMap" longitude="{{ mapCenter.longitude }}" latitude="{{ mapCenter.latitude }}" polyline="{{ polyline }}" show-location="true" scale="11" include-points="{{ polyline[0].points }}" markers="{{ markers }}"></map>
+        <view class="route-data">{{ linelist[linetype].SSTATION_NAME_ID }} → {{ linelist[linetype].FSTATION_NAME_ID }}</view>
+        <button wx:if="{{ linetype === 0 }}" @tap="tapSwitch" class="weui-btn switcher" type="default">回程</button>
+        <button wx:else @tap="tapSwitch" class="weui-btn switcher" type="default">去程</button>
+        <!-- <view class="page__bd page__bd_spacing">
+            <repeat for="{{linelist[linetype]['stationlist']}}" key="k" index="i" item="item">
+                <view wx:if="{{item.STATIONNAME == site}}" class="nearby-site">{{item.STATIONNAME}} {{item.BUSNUM}}</view>
+                <view wx:else>{{item.STATIONNAME}} {{item.BUSNUM}}</view>
+            </repeat>
+        </view> -->
+    </view>
+</template>
+
+<script>
+import wepy from 'wepy';
+
+export default class Detail extends wepy.page {
+
+    data = {
+        linename: '',
+        flag: -1,
+        site: '',
+        linetype: 0,
+        linelist: [],
+        mapCenter: {
+            latitude: 31.824734,
+            longitude: 117.252143,
+        },
+        polyline: [{
+            points: [],
+            color: '#FF0000DD',
+            width: 5,
+            dottedLine: false,
+            arrowLine: true,
+        }],
+        markers: [],
+    }
+
+    computed = {
+        route() {
+            return '';
+        }
+    };
+
+    methods = {
+        tapSwitch() {
+            if (this.linetype === 1) {
+                this.linetype = 0;
+            } else {
+                this.linetype = 1;
+            }
+            this.updatePolyline();
+        },
+        markerTap(e) {
+            let id = e.markerId;
+            wepy.openLocation({
+                latitude: parseFloat(this.markers[id].latitude),
+                longitude: parseFloat(this.markers[id].longitude),
+                scale: 15,
+                name: this.markers[id].callout.content,
+                address: '',
+            });
+        },
+    };
+
+    async onLoad(options) {
+        this.linename = options.linename;
+        this.flag = options.flag;
+        this.linetype = options.linetype;
+        this.site = options.site;
+
+        wepy.setNavigationBarTitle({ title: options.linename + ' - 合肥掌上公交' });
+
+        wepy.showLoading({
+            title: '请稍等',
+            mask: true,
+        });
+
+        await this.getStations();
+        this.updatePolyline();
+        wepy.hideLoading();
+
+    }
+
+    updatePolyline() {
+        if (!this.linetype) {
+            this.linetype = 0;
+        }
+        let arr = this.linelist[this.linetype].stationlist;
+        var points = [];
+        var ms = [];
+        for (const k in arr) {
+            if (arr.hasOwnProperty(k)) {
+                const element = arr[k];
+                points.push({
+                    longitude: element.JD,
+                    latitude: element.WD,
+                });
+                if (element.BUSNUM === 0) {
+                    ms.push({
+                        iconPath: '../assets/icons/circle.png',
+                        id: k,
+                        latitude: element.WD,
+                        longitude: element.JD,
+                        width: 15,
+                        height: 15,
+                        callout: {
+                            content: element.STATIONNAME,
+                            color: '#666',
+                            fontSize: 14,
+                            borderRadius: 6,
+                            bgColor: '#f8f8f8',
+                            padding: 4,
+                            display: 'BYCLICK',
+                            textAlign: 'center',
+                        },
+                    });
+                } else {
+                    ms.push({
+                        iconPath: '../assets/icons/circle-red.png',
+                        id: k,
+                        latitude: element.WD,
+                        longitude: element.JD,
+                        width: 15,
+                        height: 15,
+                        callout: {
+                            content: element.STATIONNAME + ' - ' + element.BUSNUM + '辆正在前往',
+                            color: '#fd8458',
+                            fontSize: 14,
+                            borderRadius: 6,
+                            bgColor: '#f8f8f8',
+                            padding: 4,
+                            display: 'ALWAYS',
+                            textAlign: 'center',
+                        },
+                    });
+                }
+            }
+        }
+        // console.log(points);
+        this.markers = ms;
+        this.polyline[0].points = points;
+        this.$apply();
+    }
+
+    async getStations() {
+        var result = await wepy.request({
+            url: 'https://ktdvnipy.qcloud.la/bus/site',
+            data: {
+                flag: this.flag,
+                linename: this.linename
+            },
+            method: 'POST',
+            header: {
+                'content-type': 'application/x-www-form-urlencoded'
+            },
+        });
+
+        result.data.data.list[0].stationlist.forEach((ele, i) => {
+            result.data.data.list[0].stationlist[i].BUS = [];
+            result.data.data.list[0].stationlist[i].BUSNUM = 0;
+            result.data.data.list[0].buslist.forEach((ele2, i2) => {
+                if (ele.STATIONNAME === ele2.stationname) {
+                    result.data.data.list[0].stationlist[i].BUS.push(ele2);
+                    result.data.data.list[0].stationlist[i].BUSNUM ++;
+                }
+            });
+        });
+
+        result.data.data.list[1].stationlist.forEach((ele, i) => {
+            result.data.data.list[1].stationlist[i].BUS = [];
+            result.data.data.list[1].stationlist[i].BUSNUM = 0;
+            result.data.data.list[1].buslist.forEach((ele2, i2) => {
+                if (ele.STATIONNAME === ele2.stationname) {
+                    result.data.data.list[1].stationlist[i].BUS.push(ele2);
+                    result.data.data.list[1].stationlist[i].BUSNUM ++;
+                }
+            });
+        });
+
+        this.linelist = result.data.data.list;
+        this.$apply();
+        // this.updatePolyline();
+    }
+
+    async onPullDownRefresh() {
+        await this.getStations();
+        wepy.stopPullDownRefresh();
+    }
+}
+</script>
